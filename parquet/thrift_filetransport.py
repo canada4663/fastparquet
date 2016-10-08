@@ -18,3 +18,8 @@ class TFileTransport(TTransportBase):  # pylint: disable=too-few-public-methods
     def _read(self, sz):
         """Read data `sz` bytes."""
         return self._fo.read(sz)
+
+    def _write(self, sz):
+        return self._fo.write(sz)
+
+    write = _write

@@ -457,14 +457,6 @@ def reader(file_obj, columns=None):
                              _get_name(parquet_thrift.Type, cmd.type))
             while values_seen < row_group_rows:
                 page_header = _read_page_header(file_obj)
-                if debug_logging:
-                    logger.debug("Reading page (type=%s, "
-                                 "uncompressed=%s bytes, "
-                                 "compressed=%s bytes)",
-                                 _get_name(parquet_thrift.PageType, page_header.type),
-                                 page_header.uncompressed_page_size,
-                                 page_header.compressed_page_size)
-
                 if page_header.type == parquet_thrift.PageType.DATA_PAGE:
                     values = read_data_page(file_obj, schema_helper, page_header, cmd,
                                             dict_items)
@@ -475,8 +467,6 @@ def reader(file_obj, columns=None):
                         logger.debug(page_header)
                     assert dict_items == []
                     dict_items = _read_dictionary_page(file_obj, schema_helper, page_header, cmd)
-                    if debug_logging:
-                        logger.debug("Dictionary: %s", str(dict_items))
                 else:
                     logger.info("Skipping unknown page type=%s",
                                 _get_name(parquet_thrift.PageType, page_header.type))
@@ -485,47 +475,42 @@ def reader(file_obj, columns=None):
             yield [res[k][i] for k in keys if res[k]]
 
 
-class JsonWriter(object):  # pylint: disable=too-few-public-methods
-    """Utility for dumping rows as JSON objects."""
+class ParquetFile(object):
+    """For now: metadata representation"""
 
-    def __init__(self, out):
-        """Initialize with output destination."""
-        self._out = out
+    def __init__(self, fname):
+        self.fname = fname
+        with open(fname, 'rb') as f:
+            f.seek(-8, 2)
+            head_size = struct.unpack('<i', f.read(4))[0]
+            assert f.read() == b'PAR1'
 
-    def writerow(self, row):
-        """Write a single row."""
-        json_text = json.dumps(row)
-        if isinstance(json_text, bytes):
-            json_text = json_text.decode('utf-8')
-        self._out.write(json_text)
-        self._out.write(u'\n')
+            f.seek(-(head_size+8), 2)
+            fmd = parquet_thrift.FileMetaData()
+            tin = TFileTransport(f)
+            pin = TCompactProtocolFactory().get_protocol(tin)
+            fmd.read(pin)
+        self.head_size = head_size
+        self.version = fmd.version
+        self.schema = fmd.schema
+        self.row_groups = fmd.row_groups
+        self.key_value_metadata = fmd.key_value_metadata
+        self.created_by = fmd.created_by
 
+    @property
+    def columns(self):
+        return [f.name for f in self.schema if f.num_children is None]
 
-def _dump(file_obj, options, out=sys.stdout):
-    """Dump to fo with given options."""
-    # writer and keys are lazily loaded. We don't know the keys until we have
-    # the first item. And we need the keys for the csv writer.
-    total_count = 0
-    writer = None
-    keys = None
-    for row in DictReader(file_obj, options.col):
-        if not keys:
-            keys = row.keys()
-        if not writer:
-            writer = csv.DictWriter(out, keys, delimiter=u'\t', quotechar=u'\'', quoting=csv.QUOTE_MINIMAL) \
-                if options.format == 'csv' \
-                else JsonWriter(out) if options.format == 'json' \
-                else None
-        if total_count == 0 and options.format == "csv" and not options.no_headers:
-            writer.writeheader()
-        if options.limit != -1 and total_count >= options.limit:
-            return
-        row_unicode = {k: v.decode("utf-8") if isinstance(v, bytes) else v for k, v in row.items()}
-        writer.writerow(row_unicode)
-        total_count += 1
+    def to_pandas(self):
+        # 4345e5eef217aa1b-c8f16177f35fd983_1150363067_data.1.parq
+        # read time: 30.3s
+        import pandas as pd
+        return pd.DataFrame(data=self.read(), columns=self.columns)
 
+    def read(self, columns=None):
+        return list(reader(open(self.fname, 'rb'), columns))
 
-def dump(filename, options, out=sys.stdout):
-    """Dump parquet file with given filename using options to `out`."""
-    with open(filename, 'rb') as file_obj:
-        return _dump(file_obj, options=options, out=out)
+    def __str__(self):
+        return "<Parquet File '%s'>" % self.fname
+
+    __repr__ = __str__
