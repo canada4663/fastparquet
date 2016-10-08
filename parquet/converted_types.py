@@ -20,18 +20,14 @@ import struct
 import sys
 from decimal import Decimal
 
-import thriftpy
-
-THRIFT_FILE = os.path.join(os.path.dirname(__file__), "parquet.thrift")
-parquet_thrift = thriftpy.load(THRIFT_FILE, module_name=str("parquet_thrift"))  # pylint: disable=invalid-name
-
+from .thrift_structures import parquet_thrift
 logger = logging.getLogger('parquet')  # pylint: disable=invalid-name
 
-bson = None  # pylint: disable=invalid-name
 try:
-    import bson
+    from bson import BSON
 except ImportError:
-    pass
+    def BSON(x):
+        raise ImportError("BSON not found")
 
 PY3 = sys.version_info.major > 2
 
@@ -85,7 +81,7 @@ def convert_column(data, schemae):
     elif ctype == parquet_thrift.ConvertedType.JSON:
         return [json.loads(s) for s in codecs.iterdecode(data, "utf-8")]
     elif ctype == parquet_thrift.ConvertedType.BSON and bson:
-        return [bson.BSON(s).decode() for s in data]
+        return [BSON(s).decode() for s in data]
     else:
         logger.info("Converted type '%s'' not handled",
                     parquet_thrift.ConvertedType._VALUES_TO_NAMES[ctype])  # pylint:disable=protected-access

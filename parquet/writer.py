@@ -4,10 +4,12 @@ import os
 import shutil
 import struct
 
-from . import TFileTransport, TCompactProtocolFactory, parquet_thrift, reader, ParquetFile
+from .core import TFileTransport, TCompactProtocolFactory, parquet_thrift
 
 MARKER = b'PAR1'
 import thriftpy
+
+
 def thrift_print(structure, offset=0):
     if not isinstance(structure, thriftpy.thrift.TPayload):
         return str(structure)
@@ -135,7 +137,7 @@ def make_part_file(partname, data, schema):
     return rg
 
 
-def POC(filename, data, partitions=[0, 500], encoding=parquet_thrift.Encoding.PLAIN,
+def write(filename, data, partitions=[0, 500], encoding=parquet_thrift.Encoding.PLAIN,
         compression=parquet_thrift.CompressionCodec.UNCOMPRESSED,
         file_scheme='simple'):
     """ data is a 1d int array for starters
@@ -203,24 +205,6 @@ def POC(filename, data, partitions=[0, 500], encoding=parquet_thrift.Encoding.PL
         f.close()
 
 
-def test_POC():
-    import numpy as np
-    data = np.arange(1000, dtype=np.int64)
-    POC('/Users/mdurant/test.parquet', data, file_scheme='simple')
-
-    r = reader(open('/Users/mdurant/test.parquet', 'rb'))
-
-    # default reader produces a list per row
-    assert sum(r, []) == data.tolist()
-
-    import pyspark
-    sc = pyspark.SparkContext.getOrCreate()
-    sql = pyspark.SQLContext(sc)
-    df = sql.read.parquet('/Users/mdurant/test.parquet')
-    ddf = df.toPandas()
-    assert (ddf.astype(int).num == data).all()
-
-
 def make_unsigned_var_int(result):
     """Byte representation used for length-of-next-block"""
     bit = b''
@@ -231,7 +215,7 @@ def make_unsigned_var_int(result):
 
 
 def make_rle_string(count, value):
-    """Byte representation of a single value run: count occurances of value"""
+    """Byte representation of a single value run: count occurrances of value"""
     import struct
     header = (count << 1)
     header_bytes = make_unsigned_var_int(header)

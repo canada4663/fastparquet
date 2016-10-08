@@ -13,10 +13,7 @@ import os
 import struct
 import sys
 
-import thriftpy
-
-THRIFT_FILE = os.path.join(os.path.dirname(__file__), "parquet.thrift")
-parquet_thrift = thriftpy.load(THRIFT_FILE, module_name=str("parquet_thrift"))  # pylint: disable=invalid-name
+from .thrift_structures import parquet_thrift
 
 logger = logging.getLogger("parquet")  # pylint: disable=invalid-name
 
