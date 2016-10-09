@@ -12,6 +12,7 @@ import struct
 import sys
 from collections import OrderedDict, defaultdict
 
+import snappy
 import thriftpy
 from thriftpy.protocol.compact import TCompactProtocolFactory
 
@@ -363,8 +364,6 @@ def reader(file_obj, footer, columns=None):
                     res[".".join(cmd.path_in_schema)] += values
                     values_seen += page_header.data_page_header.num_values
                 elif page_header.type == parquet_thrift.PageType.DICTIONARY_PAGE:
-                    if debug_logging:
-                        logger.debug(page_header)
                     assert dict_items == []
                     dict_items = _read_dictionary_page(file_obj, schema_helper, page_header, cmd)
                 else:

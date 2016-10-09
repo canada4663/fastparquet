@@ -80,7 +80,7 @@ def convert_column(data, schemae):
         return _convert_unsigned(data, 'q')
     elif ctype == parquet_thrift.ConvertedType.JSON:
         return [json.loads(s) for s in codecs.iterdecode(data, "utf-8")]
-    elif ctype == parquet_thrift.ConvertedType.BSON and bson:
+    elif ctype == parquet_thrift.ConvertedType.BSON and BSON:
         return [BSON(s).decode() for s in data]
     else:
         logger.info("Converted type '%s'' not handled",

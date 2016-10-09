@@ -5,6 +5,9 @@ from parquet import write
 import pytest
 import shutil
 import tempfile
+pyspark = pytest.importorskip("pyspark")
+sc = pyspark.SparkContext.getOrCreate()
+sql = pyspark.SQLContext(sc)
 
 
 @pytest.yield_fixture()
@@ -25,9 +28,6 @@ def test_pyspark_roundtrip(tempdir):
     # default reader produces a list per row
     assert sum(r.read(), []) == data.tolist()
 
-    import pyspark
-    sc = pyspark.SparkContext.getOrCreate()
-    sql = pyspark.SQLContext(sc)
     df = sql.read.parquet(fname)
     ddf = df.toPandas()
     assert (ddf.num.values == data).all()

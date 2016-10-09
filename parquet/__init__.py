@@ -6,25 +6,44 @@ from __future__ import unicode_literals
 
 import struct
 
-from .core import parquet_thrift, reader, TFileTransport, TCompactProtocolFactory
+import thriftpy
+
+from .core import (parquet_thrift, reader, TFileTransport, TCompactProtocolFactory,
+                   ParquetFormatException)
 from .writer import write
+
 
 class ParquetFile(object):
     """For now: metadata representation"""
 
-    def __init__(self, fname):
+    def __init__(self, fname, verify=True):
         self.fname = fname
-        with open(fname, 'rb') as f:
-            assert f.read(4) == b'PAR1'
+        self.verify = verify
+        if isinstance(fname, str):
+            f = open(fname, 'rb')
+        else:
+            f = fname
+        self._parse_header(f, verify)
+
+    def _parse_header(self, f, verify=True):
+        try:
+            if verify:
+                assert f.read(4) == b'PAR1'
             f.seek(-8, 2)
             head_size = struct.unpack('<i', f.read(4))[0]
-            assert f.read() == b'PAR1'
+            if verify:
+                assert f.read() == b'PAR1'
+        except (AssertionError, struct.error):
+            raise ParquetFormatException('File parse failed: %s' % self.fname)
 
-            f.seek(-(head_size+8), 2)
+        f.seek(-(head_size+8), 2)
+        try:
             fmd = parquet_thrift.FileMetaData()
             tin = TFileTransport(f)
             pin = TCompactProtocolFactory().get_protocol(tin)
             fmd.read(pin)
+        except thriftpy.transport.TTransportException:
+            raise ParquetFormatException('Metadata parse failed: %s' % self.fname)
         self.fmd=fmd
         self.head_size = head_size
         self.version = fmd.version
