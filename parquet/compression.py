@@ -1,3 +1,6 @@
+
+# TODO: use stream/direct-to-buffer conversions instead of memcopy
+
 compress = {'gzip': gzip.compress}
 decompress = {'gzip': gzip.decompress}
 try:
@@ -18,3 +21,15 @@ try:
     decompress['brotli'] = decompress
 except ImportError:
     pass
+
+
+def compress_data(data, algorithm='gzip'):
+    if algorithm not in compress:
+        raise RuntimeError("Compression '%s' not available" % compress)
+    return compress[algorithm](data)
+
+
+def decompress_data(data, algorithm='gzip'):
+    if algorithm not in compress:
+        raise RuntimeError("Decompression '%s' not available" % compress)
+    return decompress[algorithm](data)

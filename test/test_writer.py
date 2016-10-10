@@ -42,6 +42,5 @@ def test_roundtrip(tempdir, partitions):
 
     r = ParquetFile(fname)
 
-    # default reader produces a list per row
     assert (r.to_pandas().num == data).all()
 

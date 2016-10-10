@@ -1,16 +1,98 @@
 
 import io
+import numpy as np
 import os
 import shutil
 import struct
+import thriftpy
 
 from .core import TFileTransport, TCompactProtocolFactory, parquet_thrift
 
 MARKER = b'PAR1'
-import thriftpy
+NaT = np.timedelta64(None).tobytes()  # require numpy version >= 1.7
+
+typemap = {  # primitive type, converted type, bit width (if not standard)
+    np.bool: (parquet_thrift.Type.BOOLEAN, None, None),
+    np.int32: (parquet_thrift.Type.INT32, None, None),
+    np.int64: (parquet_thrift.Type.INT64, None, None),
+    np.int8: (parquet_thrift.Type.INT32, parquet_thrift.ConvertedType.INT_8, None),
+    np.int16: (parquet_thrift.Type.INT64, parquet_thrift.ConvertedType.INT_16, None),
+    np.uint8: (parquet_thrift.Type.INT32, parquet_thrift.ConvertedType.UINT_8, None),
+    np.uint16: (parquet_thrift.Type.INT64, parquet_thrift.ConvertedType.UINT_16, None),
+    np.float32: (parquet_thrift.Type.FLOAT, None, None),
+    np.float64: (parquet_thrift.Type.DOUBLE, None, None),
+    np.float16: (parquet_thrift.Type.FLOAT, None, 16),
+}
+
+def find_type(data):
+    """ Get appropriate typecodes for column dtype
+
+    Data conversion does not happen here, only at write time.
+
+    The user is expected to transform their data into the appropriate dtype
+    before saving to parquet, we will not make any assumptions for them.
+
+    If the dtype is "object" the first ten items will be examined, and is str
+    or bytes, will be stored as variable length byte strings; if dict or list,
+    (nested data) will be stored with BSON encoding.
+
+    To be stored as fixed-length byte strings, the dtype must be "bytesXX"
+    (pandas notation) or "|SXX" (numpy notation)
+
+    In the case of catagoricals, the data type refers to the labels; the data
+    (codes) will be stored as int. The labels are usually variable length
+    strings.
+
+    BOOLs will be bitpacked using bytearray. To instead keep the default numpy
+    representation of one byte per value, change to int8 or uint8 type
+
+    Known types that cannot be represented (must be first converted another
+    type or to raw binary): float128, complex
+
+    Parameters
+    ----------
+    A pandas series.
+
+    Returns
+    -------
+    - a thrift schema element
+    - a thrift typecode to be passed to the column chunk writer
+
+    """
+    if data.dtype in typemap:
+        type, converted_type, width = typemap[data.dtype]
+    elif "S" in str(data.dtype):
+        type, converted_type, width = (parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY,
+                                       None, data.dtype.itemsize)
+    elif data.dtype == "O":
+        if all(isinstance(i, str) for i in data[:10]):
+            type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY,
+                                           parquet_thrift.ConvertedType.UTF8, None)
+        elif all(isinstance(i, bytes) for i in data[:10]):
+            type, converted_type, width = parquet_thrift.Type.BYTE_ARRAY, None, None
+        elif all(isinstance(i, list) for i in data[:10]) or all(isinstance(i, dict) for i in data[:10]):
+            type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY,
+                                           parquet_thrift.ConvertedType.BSON, None)
+        else:
+            raise ValueError("Data type conversion unknown: %s" % data.dtype)
+    elif str(data.dtype).startswith("datetime64"):
+        type, converted_type, width = (parquet_thrift.Type.INT64,
+                                       parquet_thrift.ConvertedType.TIMESTAMP_MICROS, None)
+    elif str(data.dtype).startswith("timedelta64"):
+        type, converted_type, width = (parquet_thrift.Type.INT64,
+                                       parquet_thrift.ConvertedType.TIME_MICROS, None)
+    else:
+        raise ValueError("Don't know how to convert data type: %s" % data.dtype)
+    # TODO: pandas has no explicit support for Decimal
+    se = parquet_thrift.SchemaElement(name=data.name, type_length=width,
+                                      converted_type=converted_type)
+    return se, type
 
 
 def thrift_print(structure, offset=0):
+    """
+    Handy recursive text ouput for thrift structures
+    """
     if not isinstance(structure, thriftpy.thrift.TPayload):
         return str(structure)
     s = str(structure.__class__) + '\n'
