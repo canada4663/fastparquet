@@ -1,24 +1,27 @@
 
+import gzip
+
 # TODO: use stream/direct-to-buffer conversions instead of memcopy
 
-compress = {'gzip': gzip.compress}
-decompress = {'gzip': gzip.decompress}
+
+compress = {'GZIP': gzip.compress}
+decompress = {'GZIP': gzip.decompress}
 try:
-    from snappy import decompress, compress
-    compress['snappy'] = compress
-    decompress['snappy'] = decompress
+    import snappy
+    compress['SNAPPY'] = snappy.compress
+    decompress['SNAPPY'] = snappy.decompress
 except ImportError:
     pass
 try:
-    from lzo import decompress, _compression
-    compress['lzo'] = compress
-    decompress['lzo'] = decompress
+    import lzo
+    compress['LZO'] = lzo.compress
+    decompress['LZO'] =lzo. decompress
 except ImportError:
     pass
 try:
-    from brotli import decompress, _compression
-    compress['brotli'] = compress
-    decompress['brotli'] = decompress
+    import brotli
+    compress['BROTLI'] = brotli.compress
+    decompress['BROTLI'] = brotli.decompress
 except ImportError:
     pass
 

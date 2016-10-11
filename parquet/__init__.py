@@ -56,11 +56,11 @@ class ParquetFile(object):
     def columns(self):
         return [f.name for f in self.schema if f.num_children is None]
 
-    def to_pandas(self):
+    def to_pandas(self, columns=None):
         # 4345e5eef217aa1b-c8f16177f35fd983_1150363067_data.1.parq
         # read time: 30.3s
         import pandas as pd
-        return pd.DataFrame(data=self.read(), columns=self.columns)
+        return pd.DataFrame(data=self.read(), columns=columns or self.columns)
 
     def read(self, columns=None):
         return list(reader(open(self.fname, 'rb'), self.fmd, columns))
