@@ -49,7 +49,14 @@ project.
 
 A list of current issues can be found `here <https://github.com/dask/fastparquet/>`_.
 
+Specific features of parquet which we do not intend to implement include:
 
+- nested schemas, more than one level of optional fields
+- schema evolution, all row-groups are assumed to have the same schema
+
+Some other features will only be emulated using workarounds. For instance,
+writing array types will not be implemented in the near-term, but one can
+always choose to store the byte representation of the arrays instead.
 
 Index
 -----

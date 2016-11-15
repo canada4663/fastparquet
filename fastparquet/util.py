@@ -61,3 +61,11 @@ def ensure_bytes(s):
         return s.encode()
     else:
         return s
+
+
+@pytest.fixture()
+def sql():
+    pyspark = pytest.importorskip("pyspark")
+    sc = pyspark.SparkContext.getOrCreate()
+    sql = pyspark.SQLContext(sc)
+    return sql

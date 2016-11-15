@@ -20,16 +20,9 @@ import pandas as pd
 import pytest
 
 import fastparquet
+from fastparquet.util import sql, tempdir
 
 TEST_DATA = "test-data"
-
-
-@pytest.yield_fixture()
-def tempdir():
-    d = tempfile.mkdtemp()
-    yield d
-    if os.path.exists(d):
-        shutil.rmtree(d, ignore_errors=True)
 
 
 def test_header_magic_bytes(tempdir):
@@ -255,3 +248,26 @@ def test_cat_filters():
 
     filters = [('cat', '==', 'freda'), ('catnum', '!=', 2.5)]
     assert len(pf.to_pandas(filters=filters)) == 1000
+
+
+def test_structured_fields(sql, tempdir):
+    tmp = os.path.join(str(tempdir), 'temp.parquet')
+    df = sql.createDataFrame(
+            pd.DataFrame(
+                    {'a': [[0, 1, 2], [0]],
+                     'b': [{'k0': 'v0'}, {'k0': 'v1', 'k1': 1}]}
+            )
+    )
+    df.write.parquet(tmp)
+    pf = fastparquet.ParquetFile(tmp)
+    leaf_nodes = [s.name for s in pf.schema if s.num_children is None]
+    assert leaf_nodes == ['element', 'key', 'value']
+    assert pf.columns == ['a', 'b']
+    assert pf.dtypes == {'a': "LIST", 'b': "MAP"}
+    assert pf.count == 2
+
+    chunks = [c.meta_data.path_in_schema for c in pf.row_groups[0].columns]
+    assert chunks == [['a', 'list', 'element'],
+                      ['b', 'key_value', 'key'],
+                      ['b', 'key_value', 'value']]
+

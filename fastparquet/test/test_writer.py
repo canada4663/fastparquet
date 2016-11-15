@@ -10,19 +10,11 @@ import pytest
 import shutil
 import tempfile
 
-from fastparquet.util import tempdir
+from fastparquet.util import tempdir, sql
 from fastparquet.test.test_read import s3
 from fastparquet.compression import compressions
 
 TEST_DATA = "test-data"
-
-
-@pytest.fixture()
-def sql():
-    pyspark = pytest.importorskip("pyspark")
-    sc = pyspark.SparkContext.getOrCreate()
-    sql = pyspark.SQLContext(sc)
-    return sql
 
 
 def test_uvarint():

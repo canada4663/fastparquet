@@ -89,7 +89,24 @@ class ParquetFile(object):
     @property
     def columns(self):
         """ Column names """
-        return [f.name for f in self.schema if f.num_children is None]
+        out = []
+        i = 1   # always skip schema root
+        while i < len(self.schema):
+            selement = self.schema[i]
+            if selement.num_children and selement.converted_type is None:
+                for _ in range(selement.num_children):
+                    i += 1
+                    selement = self.schema[i]
+                    if selement.num_children is not None:
+                        raise ValueError('Nested schema - not implemented')
+                    out.append(selement.name)
+            elif selement.converted_type == parquet_thrift.ConvertedType.LIST:
+                out.append(selement.name)
+                i += 3   # skip "list" and "element" entries
+            elif selement.converted_type == parquet_thrift.ConvertedType.MAP:
+                out.append(selement.name)
+                i += 4   # skip "map", "key" and "value" entries
+        return out
 
     @property
     def statistics(self):
@@ -198,11 +215,18 @@ class ParquetFile(object):
     @property
     def dtypes(self):
         """ Implied types of the columns in the schema """
-        dtype = {f.name: converted_types.typemap(f)
-                 for f in self.schema if f.num_children is None}
+        dtype = {}
+        for selement in self.schema:
+            if selement.name not in self.columns:
+                continue
+            if selement.converted_type == parquet_thrift.ConvertedType.LIST:
+                dtype[selement.name] = 'LIST'
+            elif selement.converted_type == parquet_thrift.ConvertedType.MAP:
+                dtype[selement.name] = 'MAP'
+            else:
+                dtype[selement.name] = converted_types.typemap(selement)
         for cat in self.cats:
             dtype[cat] = "category"
-            # pd.Series(self.cats[cat]).map(val_to_num).dtype
         return dtype
 
     def __str__(self):
