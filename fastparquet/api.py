@@ -93,7 +93,10 @@ class ParquetFile(object):
         i = 1   # always skip schema root
         while i < len(self.schema):
             selement = self.schema[i]
-            if selement.num_children and selement.converted_type is None:
+            if selement.num_children is None:
+                out.append(selement.name)
+                i += 1
+            elif selement.converted_type is None:
                 for _ in range(selement.num_children):
                     i += 1
                     selement = self.schema[i]

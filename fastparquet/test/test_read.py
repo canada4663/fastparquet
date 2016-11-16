@@ -255,7 +255,8 @@ def test_structured_fields(sql, tempdir):
     df = sql.createDataFrame(
             pd.DataFrame(
                     {'a': [[0, 1, 2], [0]],
-                     'b': [{'k0': 'v0'}, {'k0': 'v1', 'k1': 1}]}
+                     'b': [{'k0': 'v0'}, {'k0': 'v1', 'k1': 1}],
+                     'c': [['a'], ['b', 'c']]}
             )
     )
     df.write.parquet(tmp)
@@ -263,7 +264,7 @@ def test_structured_fields(sql, tempdir):
     leaf_nodes = [s.name for s in pf.schema if s.num_children is None]
     assert leaf_nodes == ['element', 'key', 'value']
     assert pf.columns == ['a', 'b']
-    assert pf.dtypes == {'a': "LIST", 'b': "MAP"}
+    assert pf.dtypes == {'a': "LIST", 'b': "MAP"}  # To revert to Object later
     assert pf.count == 2
 
     chunks = [c.meta_data.path_in_schema for c in pf.row_groups[0].columns]
