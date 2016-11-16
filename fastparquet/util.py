@@ -25,7 +25,10 @@ def default_openw(f):
 
 
 def default_mkdirs(f):
-    os.makedirs(f, exist_ok=True)
+    try:
+        os.makedirs(f)
+    except:
+        pass
 
 
 def default_open(f, mode='rb'):

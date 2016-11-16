@@ -1,9 +1,28 @@
 
 import gzip
+import io
+import sys
 from .thrift_structures import parquet_thrift
 # TODO: use stream/direct-to-buffer conversions instead of memcopy
 
 # TODO: enable ability to pass kwargs to compressor
+
+PY2 = sys.version_info.major == 2
+
+if PY2:
+    def gzip_compress(b):
+        i = io.BytesIO()
+        g = gzip.GzipFile(fileobj=i, mode='wb')
+        g.write(b)
+        g.close()
+        return i.getvalue()
+    gzip.compress = gzip_compress
+
+    def gzip_decompress(b):
+        i = io.BytesIO(b)
+        g = gzip.GzipFile(fileobj=i, mode='rb')
+        return g.read()
+    gzip.decompress = gzip_decompress
 
 compressions = {'GZIP': gzip.compress,
                 'UNCOMPRESSED': lambda x: x}

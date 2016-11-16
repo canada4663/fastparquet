@@ -1,3 +1,5 @@
+from __future__ import absolute_import
+
 import io
 import numpy as np
 import os
@@ -92,8 +94,7 @@ def read_data_page(f, helper, header, metadata):
     """
     daph = header.data_page_header
     raw_bytes = _read_page(f, header, metadata)
-    io_obj = encoding.Numpy8(np.frombuffer(memoryview(raw_bytes),
-                                           dtype=np.uint8))
+    io_obj = encoding.Numpy8(np.frombuffer(raw_bytes, dtype=np.uint8))
 
     definition_levels, num_nulls = read_def(io_obj, daph, helper, metadata)
 

@@ -33,10 +33,10 @@ DECODE_TYPEMAP = {
 def read_plain(raw_bytes, type_, count, width=0):
     if type_ in DECODE_TYPEMAP:
         dtype = DECODE_TYPEMAP[type_]
-        return np.frombuffer(memoryview(raw_bytes), dtype=dtype, count=count)
+        return np.frombuffer(raw_bytes, dtype=dtype, count=count)
     if type_ == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
         dtype = np.dtype('S%i' % width)
-        return np.frombuffer(memoryview(raw_bytes), dtype=dtype, count=count)
+        return np.frombuffer(raw_bytes, dtype=dtype, count=count)
     if type_ == parquet_thrift.Type.BOOLEAN:
         return read_plain_boolean(raw_bytes, count)
     # variable byte arrays (rare)
