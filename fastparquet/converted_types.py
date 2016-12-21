@@ -83,82 +83,67 @@ def typemap(se):
     return np.dtype("O")
 
 
-def convert(data, se):
+def _temp_convert_array(dtypein, dtypeout):
+    """For the given dtypes, do we need a temporary array?"""
+    return dtypein.itemsize == dtypeout.itemsize
+
+
+def convert(data, se, out):
     """Convert known types from primitive to rich.
 
     Parameters
     ----------
-    data: pandas series of primitive type
+    data: numpy array of primitive type
     se: a schema element.
+    out: numpy array to assign to (may be the same as data, or share the same
+        memory buffer)
     """
     ctype = se.converted_type
-    if ctype is None:
-        return data
-    if ctype == parquet_thrift.ConvertedType.UTF8:
-        if isinstance(data, list) or data.dtype != "O":
-            out = np.empty(len(data), dtype="O")
-        else:
-            out = data
-        out[:] = [s.decode('utf8') for s in data]
-        return out
-    if ctype == parquet_thrift.ConvertedType.DECIMAL:
+    if ctype is None or ctype == parquet_thrift.ConvertedType.INTERVAL:
+        pass
+    elif ctype == parquet_thrift.ConvertedType.UTF8:
+        out[:] = (s.decode('utf8') for s in data)
+    elif ctype == parquet_thrift.ConvertedType.DECIMAL:
         scale_factor = 10**-se.scale
-        if data.dtype.kind in ['i', 'f']:
-            return data * scale_factor
+        if data is output:
+            out *= scale_factor
+        elif data.dtype.kind in ['i', 'f']:
+            out[:] = data * scale_factor
         else:  # byte-string
             # NB: general but slow method
             # could optimize when data.dtype.itemsize <= 8
             # NB: `from_bytes` may be py>=3.4 only
-            return np.array([int.from_bytes(d, byteorder='big', signed=True) *
-                             scale_factor for d in data])
+            out[:] = (int.from_bytes(d, byteorder='big', signed=True) *
+                      scale_factor for d in data)
     elif ctype == parquet_thrift.ConvertedType.DATE:
-        return (data * DAYS_TO_MILLIS).view('datetime64[ns]')
+        # out.view('int64')[:] = data * DAYS_TO_MILLIS ?
+        out.view('int64')[:] = data
+        out.view('int64')[:] *= DAYS_TO_MILLIS
     elif ctype == parquet_thrift.ConvertedType.TIME_MILLIS:
-        out = np.empty(len(data), dtype='int64')
-        time_shift(data, out, 1000000)
-        return out.view('timedelta64[ns]')
+        time_shift(data, out.view('int64'), 1000000)
     elif ctype == parquet_thrift.ConvertedType.TIMESTAMP_MILLIS:
-        out = np.empty_like(data)
-        time_shift(data, out, 1000000)
-        return out.view('datetime64[ns]')
+        time_shift(data, out.view('int64'), 1000000)
     elif ctype == parquet_thrift.ConvertedType.TIME_MICROS:
-        out = np.empty_like(data)
-        time_shift(data, out)
-        return out.view('timedelta64[ns]')
+        time_shift(data, out.view('int64'))
     elif ctype == parquet_thrift.ConvertedType.TIMESTAMP_MICROS:
-        out = np.empty_like(data)
-        time_shift(data, out)
-        return out.view('datetime64[ns]')
-    elif ctype == parquet_thrift.ConvertedType.UINT_8:
-        return data.astype(np.uint8)
-    elif ctype == parquet_thrift.ConvertedType.UINT_16:
-        return data.astype(np.uint16)
-    elif ctype == parquet_thrift.ConvertedType.UINT_32:
-        return data.astype(np.uint32)
-    elif ctype == parquet_thrift.ConvertedType.UINT_64:
-        return data.astype(np.uint64)
+        time_shift(data, out.view('int64'))
+    elif ctype in (parquet_thrift.ConvertedType.UINT_8,
+                   parquet_thrift.ConvertedType.UINT_16,
+                   parquet_thrift.ConvertedType.UINT_32,
+                   parquet_thrift.ConvertedType.UINT_64,
+                   parquet_thrift.ConvertedType.INT_8,
+                   parquet_thrift.ConvertedType.INT_16,
+                   parquet_thrift.ConvertedType.INT_32,
+                   parquet_thrift.ConvertedType.INT_64):
+        if out is not data:
+            out[:] = data
     elif ctype == parquet_thrift.ConvertedType.JSON:
-        if isinstance(data, list) or data.dtype != "O":
-            out = np.empty(len(data), dtype="O")
-        else:
-            out = data
-        out[:] = [json.loads(d.decode('utf8')) for d in data]
-        return out
+        out[:] = (json.loads(d.decode('utf8')) for d in data)
     elif ctype == parquet_thrift.ConvertedType.BSON:
-        if isinstance(data, list) or data.dtype != "O":
-            out = np.empty(len(data), dtype="O")
-        else:
-            out = data
-        out[:] = [unbson(d) for d in data]
-        return out
-    elif ctype == parquet_thrift.ConvertedType.INTERVAL:
-        # for those that understand, output is month, day, ms
-        # maybe should convert to timedelta
-        return data.view('<u4').reshape((len(data), -1))
+        out[:] = (unbson(d) for d in data)
     else:
         logger.info("Converted type '%s'' not handled",
                     parquet_thrift.ConvertedType._VALUES_TO_NAMES[ctype])  # pylint:disable=protected-access
-    return data
 
 
 @numba.njit(nogil=True)
