@@ -204,5 +204,9 @@ class NumpyIO(object):  # pragma: no cover
 
 spec8 = [('data', numba.uint8[:]), ('loc', numba.int64), ('len', numba.int64)]
 Numpy8 = numba.jitclass(spec8)(NumpyIO)
+spec16 = [('data', numba.uint16[:]), ('loc', numba.int64), ('len', numba.int64)]
+Numpy16 = numba.jitclass(spec16)(NumpyIO)
 spec32 = [('data', numba.uint32[:]), ('loc', numba.int64), ('len', numba.int64)]
 Numpy32 = numba.jitclass(spec32)(NumpyIO)
+spec64 = [('data', numba.uint64[:]), ('loc', numba.int64), ('len', numba.int64)]
+Numpy64 = numba.jitclass(spec64)(NumpyIO)

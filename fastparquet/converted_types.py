@@ -88,6 +88,14 @@ def _temp_convert_array(dtypein, dtypeout):
     return dtypein.itemsize == dtypeout.itemsize
 
 
+def _shares_memory(arr1, arr2):
+    return (
+        arr1.__array_interface__['data'] ==
+        arr2.__array_interface__['data'] and
+        arr1.__array_interface__['shape'] ==
+        arr2.__array_interface__['shape'])
+
+
 def convert(data, se, out):
     """Convert known types from primitive to rich.
 
@@ -102,7 +110,7 @@ def convert(data, se, out):
     if ctype is None or ctype == parquet_thrift.ConvertedType.INTERVAL:
         pass
     elif ctype == parquet_thrift.ConvertedType.UTF8:
-        out[:] = (s.decode('utf8') for s in data)
+        out[:] = [s.decode('utf8') for s in data]
     elif ctype == parquet_thrift.ConvertedType.DECIMAL:
         scale_factor = 10**-se.scale
         if data is output:
@@ -135,12 +143,12 @@ def convert(data, se, out):
                    parquet_thrift.ConvertedType.INT_16,
                    parquet_thrift.ConvertedType.INT_32,
                    parquet_thrift.ConvertedType.INT_64):
-        if out is not data:
+        if not _shares_memory(out, data):
             out[:] = data
     elif ctype == parquet_thrift.ConvertedType.JSON:
-        out[:] = (json.loads(d.decode('utf8')) for d in data)
+        out[:] = [json.loads(d.decode('utf8')) for d in data]
     elif ctype == parquet_thrift.ConvertedType.BSON:
-        out[:] = (unbson(d) for d in data)
+        out[:] = [unbson(d) for d in data]
     else:
         logger.info("Converted type '%s'' not handled",
                     parquet_thrift.ConvertedType._VALUES_TO_NAMES[ctype])  # pylint:disable=protected-access

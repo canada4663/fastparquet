@@ -87,7 +87,7 @@ def read_rep(io_obj, daph, helper, metadata):
     return repetition_levels
 
 
-def read_data_page(f, helper, header, metadata, skip_nulls=False,
+def read_data_page(f, helper, header, metadata, assign, skip_nulls=False,
                    selfmade=False):
     """Read a data page: definitions, repetitions, values (in order)
 
@@ -107,12 +107,14 @@ def read_data_page(f, helper, header, metadata, skip_nulls=False,
         definition_levels, num_nulls = read_def(io_obj, daph, helper, metadata)
 
     repetition_levels = read_rep(io_obj, daph, helper, metadata)
+    if num_nulls:
+        assign = assign[definition_levels == 1]
     if daph.encoding == parquet_thrift.Encoding.PLAIN:
         width = helper.schema_element(metadata.path_in_schema[-1]).type_length
-        values = encoding.read_plain(raw_bytes[io_obj.loc:],
-                                     metadata.type,
-                                     int(daph.num_values - num_nulls),
-                                     width=width)
+        assign[:] = encoding.read_plain(raw_bytes[io_obj.loc:],
+                                        metadata.type,
+                                        int(daph.num_values - num_nulls),
+                                        width=width)
     elif daph.encoding in [parquet_thrift.Encoding.PLAIN_DICTIONARY,
                            parquet_thrift.Encoding.RLE]:
         # bit_width is stored as single byte.
@@ -123,19 +125,23 @@ def read_data_page(f, helper, header, metadata, skip_nulls=False,
             bit_width = io_obj.read_byte()
         if bit_width in [8, 16, 32] and selfmade:
             num = (encoding.read_unsigned_var_int(io_obj) >> 1) * 8
-            values = io_obj.read(num * bit_width // 8).view('int%i' % bit_width)
+            assign.view('uint8')[:] = memoryview(io_obj.data[io_obj.loc:])
         elif bit_width:
-            values = encoding.Numpy32(np.zeros(daph.num_values,
-                                               dtype=np.int32))
+            if assign.dtype.itemsize == 1:
+                values = encoding.Numpy8(assign)
+            elif assign.dtype.itemsize == 2:
+                values = encoding.Numpy16(assign)
+            elif assign.dtype.itemsize == 8:
+                values = encoding.Numpy64(assign)
+            else:
+                values = encoding.Numpy32(assign)
             # length is simply "all data left in this page"
             encoding.read_rle_bit_packed_hybrid(
                         io_obj, bit_width, io_obj.len-io_obj.loc, o=values)
-            values = values.data[:daph.num_values-num_nulls]
         else:
-            values = np.zeros(daph.num_values-num_nulls, dtype=np.int8)
+            assign[:] = 0
     else:
         raise NotImplementedError('Encoding %s' % daph.encoding)
-    return definition_levels, repetition_levels, values
 
 
 def skip_definition_bytes(io_obj, num):
@@ -195,9 +201,10 @@ def read_col(column, schema_helper, infile, use_cat=False,
 
     dic = None
     if ph.type == parquet_thrift.PageType.DICTIONARY_PAGE:
-        dic = np.array(read_dictionary_page(infile, schema_helper, ph, cmd))
+        dic = np.array(read_dictionary_page(infile, schema_helper, ph, cmd),
+                       dtype="O")
         ph = read_thrift(infile, parquet_thrift.PageHeader)
-        dic = convert(dic, se)
+        convert(dic, se, dic)
     if grab_dict:
         return dic
     if use_cat:
@@ -249,7 +256,7 @@ def read_col(column, schema_helper, infile, use_cat=False,
         if d and not use_cat:
             assign[:] = dic[val]
         elif do_convert:
-            assign[:] = convert(val, se)
+            convert(val, se, assign)
         else:
             assign[:] = val
     else:
@@ -267,7 +274,7 @@ def read_col(column, schema_helper, infile, use_cat=False,
                 part[defi == 1] = cval
                 start += len(defi)
             else:
-                assign[start:start+len(val)] = cval
+                cval = assign[start:start+len(val)]
                 start += len(val)
 
 
