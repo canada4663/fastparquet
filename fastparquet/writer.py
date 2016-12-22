@@ -77,35 +77,41 @@ def find_type(data, fixed_text=None, object_encoding=None):
     dtype = data.dtype
     if dtype.name in typemap:
         type, converted_type, width = typemap[dtype.name]
-    elif "S" in str(dtype)[:2] or "U" in str(dtype)[:2]:
+    elif dtype.kind in ["S", "U"]:
         type, converted_type, width = (parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY,
                                        None, dtype.itemsize)
-    elif dtype == "O":
+    elif dtype.kind == "O":
         if object_encoding == 'infer':
             object_encoding = infer_object_encoding(data)
 
         if object_encoding == 'utf8':
             type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY,
-                                           parquet_thrift.ConvertedType.UTF8, None)
+                                           parquet_thrift.ConvertedType.UTF8,
+                                           None)
         elif object_encoding in ['bytes', None]:
-            type, converted_type, width = parquet_thrift.Type.BYTE_ARRAY, None, None
+            type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY, None,
+                                           None)
         elif object_encoding == 'json':
             type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY,
-                                           parquet_thrift.ConvertedType.JSON, None)
+                                           parquet_thrift.ConvertedType.JSON,
+                                           None)
         elif object_encoding == 'bson':
             type, converted_type, width = (parquet_thrift.Type.BYTE_ARRAY,
-                                           parquet_thrift.ConvertedType.BSON, None)
+                                           parquet_thrift.ConvertedType.BSON,
+                                           None)
         if fixed_text:
             width = fixed_text
             type = parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY
-    elif str(dtype).startswith("datetime64"):
-        type, converted_type, width = (parquet_thrift.Type.INT64,
-                                       parquet_thrift.ConvertedType.TIMESTAMP_MICROS, None)
+    elif dtype.kind == "M":
+        type, converted_type, width = (
+            parquet_thrift.Type.INT64,
+            parquet_thrift.ConvertedType.TIMESTAMP_MICROS, None)
         if hasattr(dtype, 'tz') and str(dtype.tz) != 'UTC':
             warnings.warn('Coercing datetimes to UTC')
-    elif str(dtype).startswith("timedelta64"):
+    elif dtype.kind == "m":
         type, converted_type, width = (parquet_thrift.Type.INT64,
-                                       parquet_thrift.ConvertedType.TIME_MICROS, None)
+                                       parquet_thrift.ConvertedType.TIME_MICROS,
+                                       None)
     else:
         raise ValueError("Don't know how to convert data type: %s" % dtype)
     se = parquet_thrift.SchemaElement(
@@ -129,19 +135,20 @@ def convert(data, se):
             out = np.packbits(padded.reshape(-1, 8)[:, ::-1].ravel())
         elif dtype.name in typemap:
             out = data.values
-    elif "S" in str(dtype)[:2] or "U" in str(dtype)[:2]:
+    elif dtype.kind in ["S", "U"]:
         out = data.values
-    elif dtype == "O":
+    elif dtype.kind == "O":
         if converted_type == parquet_thrift.ConvertedType.UTF8:
-            out = data.str.encode('utf8').values
+            out = np.array([x.encode('utf8') for x in data], dtype="O")
         elif converted_type is None:
             out = data.values
         elif converted_type == parquet_thrift.ConvertedType.JSON:
-            out = data.map(json.dumps).str.encode('utf8').values
+            out = np.array([json.dumps(x).encode('utf8') for x in data],
+                           dtype="O")
         elif converted_type == parquet_thrift.ConvertedType.BSON:
             out = data.map(tobson).values
         if type == parquet_thrift.Type.FIXED_LEN_BYTE_ARRAY:
-            out = data.values.astype('S%i' % se.type_length)
+            out = out.astype('S%i' % se.type_length)
     elif converted_type == parquet_thrift.ConvertedType.TIMESTAMP_MICROS:
         out = np.empty(len(data), 'int64')
         time_shift(data.values.view('int64'), out)
@@ -198,7 +205,8 @@ def write_thrift(fobj, thrift):
         while tb is not None:
             frames.append(tb)
             tb = tb.tb_next
-        frame = [tb for tb in frames if 'write_struct' in str(tb.tb_frame.f_code)]
+        frame = [tb for tb in frames
+                 if 'write_struct' in str(tb.tb_frame.f_code)]
         variables = frame[0].tb_frame.f_locals
         obj = variables['obj']
         name = variables['fname']
@@ -206,8 +214,7 @@ def write_thrift(fobj, thrift):
     if fail:
         raise ParquetException('Thrift parameter validation failure %s'
                                ' when writing: %s-> Field: %s' % (
-            val.args[0], obj, name
-        ))
+                               val.args[0], obj, name))
     return fobj.tell() - t0
 
 
@@ -276,7 +283,8 @@ def encode_bitpacked(values, width, o):  # pragma: no cover
         o.write_byte(bits)
 
 
-def write_length(l, o):
+# @numba.njit(nogil=True)
+def write_length(l, o):  # pragma: no-cover
     """ Put a 32-bit length into four bytes in o
 
     Equivalent to struct.pack('<i', l), but suitable for numba-jit
