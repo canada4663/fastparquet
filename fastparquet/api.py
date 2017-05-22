@@ -86,7 +86,8 @@ class ParquetFile(object):
 
         f.seek(-(head_size+8), 2)
         try:
-            fmd = read_thrift(f, parquet_thrift.FileMetaData)
+            from fastparquet.compact import bytesIO, read_thrift
+            fmd = read_thrift(parquet_thrift.FileMetaData, bytesIO(f.read(head_size)))
         except Exception:
             raise ParquetException('Metadata parse failed: %s' %
                                    self.fn)
@@ -391,8 +392,6 @@ class ParquetFile(object):
         # old track
         vals = self.key_value_metadata.get("fastparquet.cats", None)
         if vals:
-            warnings.warn('Regression warning: found category spec from '
-                          'fastparquet <= 0.0.6')
             return json.loads(vals)
         else:
             return {}

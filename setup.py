@@ -13,7 +13,9 @@ from Cython.Build import cythonize
 
 cython_modules = [Extension('fastparquet.speedups',
                             ['fastparquet/speedups.pyx'],
-                            include_dirs=[np.get_include()])]
+                            include_dirs=[np.get_include()]),
+                  Extension('fastparquet.compact', ['fastparquet/compact.pyx'],
+                            include_dirs=[])]
 
 ext_modules = cythonize(cython_modules)
 
